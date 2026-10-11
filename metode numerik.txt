@@ -1,0 +1,542 @@
+Import math
+import os
+
+# ============================================================
+#  SOLUSI PERSAMAAN NIRLANJAR - INPUT DARI PENGGUNA
+#  Metode Tertutup + Metode Terbuka
+#  Referensi: Rinaldi Munir - Topik Khusus Informatika I
+# ============================================================
+
+W = 72  # lebar tampilan
+
+# ── ANSI Color Codes ──
+class C:
+    RST  = "\033[0m"
+    BOLD = "\033[1m"
+    DIM  = "\033[2m"
+    CYAN = "\033[96m"
+    GRN  = "\033[92m"
+    YLW  = "\033[93m"
+    RED  = "\033[91m"
+    MAG  = "\033[95m"
+    BLU  = "\033[94m"
+    WHT  = "\033[97m"
+
+def supports_color():
+    return hasattr(os, 'isatty') and os.isatty(1)
+
+USE_COLOR = supports_color()
+
+def c(text, *codes):
+    if not USE_COLOR:
+        return text
+    return "".join(codes) + str(text) + C.RST
+
+
+# ── Komponen tampilan ──
+def box_top(label="", w=W):
+    if label:
+        pad = w - len(label) - 4
+        left = pad // 2
+        right = pad - left
+        print(c("┌" + "─" * left + "[ ", C.CYAN) +
+              c(label, C.BOLD, C.WHT) +
+              c(" ]" + "─" * right + "┐", C.CYAN))
+    else:
+        print(c("┌" + "─" * (w - 2) + "┐", C.CYAN))
+
+def box_bot(w=W):
+    print(c("└" + "─" * (w - 2) + "┘", C.CYAN))
+
+def box_div(w=W):
+    print(c("├" + "─" * (w - 2) + "┤", C.CYAN))
+
+def box_line(text="", align="left", w=W, color=""):
+    inner = w - 4
+    if align == "center":
+        s = text.center(inner)
+    elif align == "right":
+        s = text.rjust(inner)
+    else:
+        s = text.ljust(inner)
+    disp = c(s, color) if color else s
+    print(c("│ ", C.CYAN) + disp + c(" │", C.CYAN))
+
+def box_blank(w=W):
+    box_line("", w=w)
+
+def header(title, subtitle=""):
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print()
+    box_top(w=W)
+    box_blank()
+    box_line(title,    align="center", color=C.BOLD + C.WHT)
+    if subtitle:
+        box_line(subtitle, align="center", color=C.DIM)
+    box_blank()
+    box_bot()
+    print()
+
+def section_header(nomor, judul, jenis=""):
+    print()
+    badge = f" {nomor} "
+    label = f"{badge} {judul}"
+    if jenis:
+        label += f"  [{jenis}]"
+    box_top(label, w=W)
+
+def kv(key, val, key_color=C.YLW, val_color=C.WHT):
+    k = c(f"{key:<18}", key_color)
+    v = c(str(val), val_color)
+    box_line(k + " : " + v, w=W)
+
+def tabel_header(kolom_fmt):
+    """kolom_fmt: list of (label, width, align)"""
+    baris = ""
+    for label, width, align in kolom_fmt:
+        if align == "r":
+            baris += c(label.rjust(width), C.BOLD + C.YLW)
+        else:
+            baris += c(label.ljust(width), C.BOLD + C.YLW)
+        baris += " "
+    baris = baris.rstrip()
+    box_line(baris, w=W)
+    box_div(w=W)
+
+def tabel_baris(vals, kolom_fmt, warna_row=C.WHT):
+    baris = ""
+    for i, (_, width, align) in enumerate(kolom_fmt):
+        v = str(vals[i]) if i < len(vals) else ""
+        if align == "r":
+            baris += c(v.rjust(width), warna_row)
+        else:
+            baris += c(v.ljust(width), warna_row)
+        baris += " "
+    baris = baris.rstrip()
+    box_line(baris, w=W)
+
+def hasil_akhir(akar, f_akar, iterasi, fx_expr):
+    box_div(w=W)
+    box_blank()
+    kv("Hampiran akar",  f"x = {akar:.8f}",    C.GRN, C.BOLD + C.GRN)
+    kv("Nilai f(akar)",  f"{f_akar:.10f}",      C.GRN, C.WHT)
+    kv("Jumlah iterasi", iterasi,               C.GRN, C.WHT)
+    box_blank()
+    box_bot(w=W)
+
+def pesan_error(msg):
+    box_blank()
+    box_line(c("⚠  " + msg, C.RED), w=W)
+    box_blank()
+    box_bot(w=W)
+
+
+# ── Fungsi evaluasi ──
+def evaluasi(ekspresi, x):
+    try:
+        return eval(ekspresi, {"__builtins__": {}}, {
+            "x": x, "exp": math.exp, "sin": math.sin, "cos": math.cos,
+            "tan": math.tan, "sqrt": math.sqrt, "log": math.log,
+            "log10": math.log10, "abs": abs, "pi": math.pi, "e": math.e
+        })
+    except:
+        return None
+
+
+# ============================================================
+#  METODE 1 — BAGIDUA (Bisection)
+# ============================================================
+def metode_bagidua(fx, a, b, eps=0.00001, maks=100):
+    fa = evaluasi(fx, a)
+    fb = evaluasi(fx, b)
+
+    section_header("1", "BAGIDUA  (Bisection Method)", "Tertutup")
+    kv("f(x)",      fx)
+    kv("Selang",    f"[{a}, {b}]")
+    kv("Toleransi", eps)
+
+    if fa is None or fb is None:
+        pesan_error("Fungsi tidak valid!"); return None, 0
+    if fa * fb >= 0:
+        pesan_error("f(a)·f(b) ≥ 0  →  syarat tidak terpenuhi!"); return None, 0
+
+    kv("f(a)", f"{fa:.6f}  {'(+)' if fa>0 else '(-)'}")
+    kv("f(b)", f"{fb:.6f}  {'(+)' if fb>0 else '(-)'}")
+    kv("Status", c("Syarat terpenuhi ✓", C.GRN))
+    box_div(w=W)
+
+    KOL = [
+        ("Iter",  4, "r"), ("a",       9, "r"), ("c=(a+b)/2", 11, "r"),
+        ("b",     9, "r"), ("f(a)",   10, "r"), ("f(c)",      10, "r"),
+        ("f(b)", 10, "r"), ("Selang",  7, "l"),
+    ]
+    tabel_header(KOL)
+
+    c_val, it = 0, 0
+    for r in range(maks):
+        c_val = (a + b) / 2
+        fa2 = evaluasi(fx, a)
+        fc  = evaluasi(fx, c_val)
+        fb2 = evaluasi(fx, b)
+        sel = "[a,c]" if fa2 * fc < 0 else "[c,b]"
+        it  = r + 1
+
+        warna = C.WHT if r % 2 == 0 else C.DIM
+        tabel_baris([
+            r, f"{a:.5f}", f"{c_val:.7f}", f"{b:.5f}",
+            f"{fa2:.5f}", f"{fc:.5f}", f"{fb2:.5f}", sel
+        ], KOL, warna)
+
+        if abs(b - a) < eps or abs(fc) < 1e-10:
+            break
+        if fa2 * fc < 0:
+            b = c_val
+        else:
+            a = c_val
+
+    hasil_akhir(c_val, evaluasi(fx, c_val), it, fx)
+    return c_val, it
+
+
+# ============================================================
+#  METODE 2 — REGULA-FALSI
+# ============================================================
+def metode_regula_falsi(fx, a, b, eps1=0.00001, eps2=0.000001):
+    fa = evaluasi(fx, a)
+    fb = evaluasi(fx, b)
+
+    section_header("2", "REGULA-FALSI  (False Position)", "Tertutup")
+    kv("f(x)",    fx)
+    kv("Rumus",   "c = b - f(b)·(b-a) / (f(b)-f(a))")
+    kv("Selang",  f"[{a}, {b}]")
+
+    if fa is None or fb is None:
+        pesan_error("Fungsi tidak valid!"); return None, 0
+    if fa * fb >= 0:
+        pesan_error("f(a)·f(b) ≥ 0  →  syarat tidak terpenuhi!"); return None, 0
+
+    kv("Status", c("Syarat terpenuhi ✓", C.GRN))
+    box_div(w=W)
+
+    KOL = [
+        ("Iter",  4, "r"), ("a",       9, "r"), ("c",        11, "r"),
+        ("b",     9, "r"), ("f(a)",   10, "r"), ("f(c)",     10, "r"),
+        ("f(b)", 10, "r"), ("Selang",  7, "l"),
+    ]
+    tabel_header(KOL)
+
+    c_val, it = 0, 0
+    for r in range(200):
+        fa2 = evaluasi(fx, a)
+        fb2 = evaluasi(fx, b)
+        c_val = b - (fb2 * (b - a)) / (fb2 - fa2)
+        fc  = evaluasi(fx, c_val)
+        sel = "[a,c]" if fa2 * fc < 0 else "[c,b]"
+        it  = r + 1
+
+        warna = C.WHT if r % 2 == 0 else C.DIM
+        tabel_baris([
+            r, f"{a:.5f}", f"{c_val:.7f}", f"{b:.5f}",
+            f"{fa2:.5f}", f"{fc:.5f}", f"{fb2:.5f}", sel
+        ], KOL, warna)
+
+        if abs(b - a) < eps1 or abs(fc) < eps2:
+            break
+        if fa2 * fc < 0:
+            b = c_val
+        else:
+            a = c_val
+
+    hasil_akhir(c_val, evaluasi(fx, c_val), it, fx)
+    return c_val, it
+
+
+# ============================================================
+#  METODE 3 — NEWTON-RAPHSON
+# ============================================================
+def metode_newton_raphson(fx, fpx, x0, eps=0.00001, maks=100):
+    section_header("3", "NEWTON-RAPHSON", "Terbuka")
+    kv("f(x)",         fx)
+    kv("f'(x)",        fpx)
+    kv("Rumus",        "x_(r+1) = x_r - f(x_r) / f'(x_r)")
+    kv("Tebakan awal", f"x0 = {x0}")
+    box_div(w=W)
+
+    KOL = [
+        ("Iter", 4, "r"), ("x_r",     12, "r"), ("f(x_r)",   11, "r"),
+        ("f'(x_r)", 11, "r"), ("x_(r+1)", 11, "r"), ("|selisih|", 10, "r"),
+    ]
+    tabel_header(KOL)
+
+    x, it = x0, 0
+    for r in range(maks):
+        fx_val  = evaluasi(fx, x)
+        fpx_val = evaluasi(fpx, x)
+
+        if fpx_val is None or abs(fpx_val) < 1e-12:
+            pesan_error("f'(x) = 0 — metode berhenti!"); break
+
+        x_baru  = x - fx_val / fpx_val
+        selisih = abs(x_baru - x)
+        it = r + 1
+
+        warna = C.WHT if r % 2 == 0 else C.DIM
+        tabel_baris([
+            r, f"{x:.6f}", f"{fx_val:.6f}",
+            f"{fpx_val:.6f}", f"{x_baru:.6f}", f"{selisih:.8f}"
+        ], KOL, warna)
+
+        if selisih < eps:
+            x = x_baru; break
+        x = x_baru
+
+    hasil_akhir(x, evaluasi(fx, x), it, fx)
+    return x, it
+
+
+# ============================================================
+#  METODE 4 — TITIK TETAP (Fixed-Point)
+# ============================================================
+def metode_titik_tetap(fx, gx, x0, eps=0.00001, maks=100):
+    section_header("4", "TITIK TETAP  (Fixed-Point Iteration)", "Terbuka")
+    kv("f(x)",         fx)
+    kv("g(x)",         gx)
+    kv("Rumus",        "x_(r+1) = g(x_r)")
+    kv("Tebakan awal", f"x0 = {x0}")
+    box_div(w=W)
+
+    KOL = [
+        ("Iter", 4, "r"), ("x_r", 14, "r"),
+        ("g(x_r)", 16, "r"), ("|selisih|", 14, "r"),
+    ]
+    tabel_header(KOL)
+
+    x, it = x0, 0
+    divergen = False
+    for r in range(maks):
+        x_baru = evaluasi(gx, x)
+
+        if x_baru is None or math.isnan(x_baru):
+            pesan_error("Nilai NaN — g(x) tidak valid!"); divergen = True; break
+
+        selisih = abs(x_baru - x)
+        it = r + 1
+
+        warna = C.WHT if r % 2 == 0 else C.DIM
+        tabel_baris([
+            r, f"{x:.6f}", f"{x_baru:.6f}", f"{selisih:.8f}"
+        ], KOL, warna)
+
+        if abs(x_baru) > 1e6:
+            pesan_error("Nilai terlalu besar — DIVERGEN!"); divergen = True; break
+
+        if selisih < eps:
+            x = x_baru; break
+        x = x_baru
+
+    if not divergen:
+        hasil_akhir(x, evaluasi(fx, x), it, fx)
+        return x, it
+    else:
+        box_blank(); box_line(c("  Coba ubah g(x) atau pilih x0 berbeda", C.YLW), w=W)
+        box_blank(); box_bot(w=W)
+        return None, it
+
+
+# ============================================================
+#  INPUT DARI PENGGUNA
+# ============================================================
+def input_angka(pesan, default=None):
+    while True:
+        try:
+            raw = input(c(f"  {pesan}", C.CYAN))
+            if raw.strip() == "" and default is not None:
+                return default
+            return float(raw)
+        except ValueError:
+            print(c("  [!] Masukkan angka yang valid!", C.RED))
+
+
+def tampilkan_contoh():
+    print()
+    box_top("Contoh Penulisan Fungsi", w=W)
+    examples = [
+        ("e^x - 5x²",      "exp(x) - 5*x**2"),
+        ("sin(x) - x/2",   "sin(x) - x/2"),
+        ("x³ - x - 2",     "x**3 - x - 2"),
+        ("10e^-x sin(2x)", "10*exp(-x)*sin(2*x)"),
+        ("√x - 2",         "sqrt(x) - 2"),
+        ("x² - 4",         "x**2 - 4"),
+    ]
+    box_line(
+        c(f"  {'Matematika':<24}", C.YLW + C.BOLD) + "  " +
+        c("Tulis di program", C.GRN + C.BOLD),
+        w=W
+    )
+    box_div(w=W)
+    for mat, prog in examples:
+        box_line(
+            c(f"  {mat:<24}", C.WHT) + "  " + c(prog, C.GRN),
+            w=W
+        )
+    box_blank()
+    box_bot(w=W)
+    print()
+
+
+def tampilkan_cek_tanda(fx):
+    print()
+    box_top("Cek Tanda Fungsi — Bantu Pilih Selang", w=W)
+    box_line(
+        c(f"  {'x':>5}", C.YLW + C.BOLD) + "  " +
+        c(f"{'_f(x)_':>14}", C.YLW + C.BOLD) + "  " +
+        c("Tanda", C.YLW + C.BOLD),
+        w=W
+    )
+    box_div(w=W)
+    for xc in [-3, -2, -1, 0, 1, 2, 3, 4, 5]:
+        val = evaluasi(fx, xc)
+        if val is not None:
+            if val > 0:
+                tanda = c("  (+)", C.GRN)
+            elif val < 0:
+                tanda = c("  (-)", C.RED)
+            else:
+                tanda = c("  (0)", C.YLW)
+            box_line(
+                c(f"  {xc:>5}", C.WHT) + "  " +
+                c(f"{val:>14.6f}", C.WHT) + tanda,
+                w=W
+            )
+    box_blank()
+    box_bot(w=W)
+    print()
+
+
+# ============================================================
+#  PROGRAM UTAMA
+# ============================================================
+if __name__ == "__main__":
+
+    while True:
+        header(
+            "SOLUSI PERSAMAAN NIRLANJAR",
+            "Metode Tertutup + Metode Terbuka  |  Ref: Rinaldi Munir"
+        )
+
+        tampilkan_contoh()
+
+        # ── Input fungsi ──
+        print(c("  Masukkan persamaan Anda:\n", C.BOLD))
+        fx = input(c("  f(x) = ", C.CYAN)).strip()
+        if not fx:
+            fx = "exp(x) - 5*x**2"
+            print(c(f"  (default: {fx})", C.DIM))
+
+        tampilkan_cek_tanda(fx)
+
+        # ── Input selang ──
+        print(c("  Pilih selang [a, b] yang berbeda tanda:\n", C.BOLD))
+        a  = input_angka("Masukkan a = ")
+        b  = input_angka("Masukkan b = ")
+        x0 = input_angka(
+            f"Tebakan awal x0 (Newton & Titik Tetap) [{(a+b)/2}] = ",
+            default=(a + b) / 2
+        )
+
+        # ── Input turunan ──
+        print(c(f"\n  Metode Newton-Raphson — masukkan f'(x):", C.BOLD))
+        print(c(f"  (turunan dari f(x) = {fx})", C.DIM))
+        fpx = input(c("  f'(x) = ", C.CYAN)).strip()
+        if not fpx:
+            fpx = ""
+            print(c("  (dilewati)", C.DIM))
+
+        # ── Input g(x) ──
+        print(c(f"\n  Metode Titik Tetap — susun f(x) = 0 menjadi x = g(x):", C.BOLD))
+        gx = input(c("  g(x) = ", C.CYAN)).strip()
+        if not gx:
+            gx = ""
+            print(c("  (dilewati)", C.DIM))
+
+        # ── Input toleransi ──
+        eps = input_angka("\n  Toleransi epsilon [0.00001] = ", default=0.00001)
+
+        # ── Jalankan semua metode ──
+        print()
+        box_top("MEMULAI PERHITUNGAN", w=W)
+        box_bot(w=W)
+
+        r1, i1 = metode_bagidua(fx, a, b, eps)
+        r2, i2 = metode_regula_falsi(fx, a, b, eps)
+        r3, i3 = (None, 0)
+        r4, i4 = (None, 0)
+
+        if fpx:
+            r3, i3 = metode_newton_raphson(fx, fpx, x0, eps)
+        if gx:
+            r4, i4 = metode_titik_tetap(fx, gx, x0, eps)
+
+        # ── Tabel perbandingan ──
+        print()
+        box_top("PERBANDINGAN HASIL SEMUA METODE", w=W)
+        box_blank()
+        box_line(
+            c(f"  {'Metode':<22}", C.YLW + C.BOLD) +
+            c(f"{'_Jenis':<10}", C.YLW + C.BOLD) +
+            c(f"{'_Akar x':>12}", C.YLW + C.BOLD) +
+            c(f"{'_Iterasi':>8}", C.YLW + C.BOLD),
+            w=W
+        )
+        box_div(w=W)
+
+        semua = [
+            ("Bagidua",        "Tertutup", r1, i1),
+            ("Regula-Falsi",   "Tertutup", r2, i2),
+            ("Newton-Raphson", "Terbuka",  r3, i3),
+            ("Titik Tetap",    "Terbuka",  r4, i4),
+        ]
+
+        valid = []
+        for nama, jenis, akar, it in semua:
+            if akar is not None and it > 0:
+                box_line(
+                    c(f"  {nama:<22}", C.WHT) +
+                    c(f"{jenis:<10}", C.DIM) +
+                    c(f"{akar:>12.6f}", C.GRN + C.BOLD) +
+                    c(f"{it:>8}", C.WHT),
+                    w=W
+                )
+                valid.append((nama, it, akar))
+            elif it > 0:
+                box_line(
+                    c(f"  {nama:<22}", C.WHT) +
+                    c(f"{jenis:<10}", C.DIM) +
+                    c(f"{'_divergen_':>12}", C.RED) +
+                    c(f"{'_–_':>8}", C.DIM),
+                    w=W
+                )
+
+        if valid:
+            tercepat = min(valid, key=lambda x: x[1])
+            akar_ref = valid[0][2]
+            box_blank()
+            box_div(w=W)
+            box_blank()
+            kv("Metode tercepat",  f"{tercepat[0]}  ({tercepat[1]} iterasi)", C.MAG, C.BOLD + C.MAG)
+            kv("Akar persamaan",   f"x = {akar_ref:.8f}", C.GRN, C.BOLD + C.GRN)
+            kv("Verifikasi f(x)",  f"{evaluasi(fx, akar_ref):.10f}", C.GRN, C.WHT)
+
+        box_blank()
+        box_bot(w=W)
+
+        print()
+        print(c("  PROGRAM SELESAI".center(W), C.BOLD + C.CYAN))
+        print()
+
+        ulang = input(c("  Tekan 'y' untuk mengulang, atau Enter untuk keluar... ", C.DIM))
+        if ulang.lower() != 'y':
+            break
+
+    print(c("  Terima kasih telah menggunakan program ini!".center(W), C.BOLD + C.CYAN))
+    print()
